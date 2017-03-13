@@ -181,7 +181,7 @@ check_buffer(void)
 			coincidencia = 0;
 			break;
 		}
-	}
+	}//Borrar
 }
 
 /*       Codigo para motor        */
