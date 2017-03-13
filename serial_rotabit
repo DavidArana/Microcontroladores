@@ -1,0 +1,269 @@
+#include <hidef.h> /* for EnableInterrupts macro */
+#include "derivative.h" /* include peripheral declarations */
+
+unsigned char comando_RPS[] = {"RPS"};
+unsigned char comando_DIR[] = {"DIR:C"};
+unsigned char comando_MOTOR[] = {"MOTOR:O"};
+unsigned char comando_STEPCW[] = {"STEPCW"};
+unsigned char comando_TEMPLIMIT[] = {"TEMPLIMIT"};
+unsigned char command_ex[] = {"Comando ejecutado"};
+unsigned char command_unrecognized[] = {"Comando no reconocido"};
+unsigned char i, c, caracter, on_off, size, choose_command;
+unsigned char data;
+unsigned char temp[6];
+unsigned char arreglo_vacio[6];
+unsigned char counter, counter2, j, coincidencia;
+unsigned char enable_transmission;
+
+/*Variables MOTOR*/
+unsigned char correr_secuencia = 0;
+unsigned char secuencia[]={0x7F,0x3F,0xBF,0x9F,0xDF,0xCF,0xEF,0x6F};//Secuencia de pasos usando lógica negativa (código gray)
+unsigned char posicion = 0;
+
+interrupt 15 UART_rx(void) //receive
+{
+	(void) SCIS1;
+	data = SCID;
+	if(data == 13){
+		i=0;
+		SCID = '\n';
+		check_buffer();
+	}
+	else{
+		temp[i++] = data;
+	}
+	if(i == 5){
+		i = 0;
+	}
+}
+
+interrupt 16 UART_tx(void){ //transmit
+	(void) SCIS1;
+	seleccionar_comando();
+	//SCIC2_TIE = 0; //apaga interrupcion de transmision
+}
+
+seleccionar_comando(){
+	if(choose_command == 0){
+		if(command_ex[i] == 0){
+			SCIC2_TIE = 0;
+			i=0;
+			SCID = '\n';
+		}
+		else{
+			SCID = command_ex[i++];
+		}
+	}
+	else{
+		if(command_unrecognized[i] == 0){
+			SCIC2_TIE = 0;
+			i=0;
+			SCID = '\n';
+		}
+		else{
+			SCID = command_unrecognized[i++];
+		}
+	}
+}
+
+print(unsigned char arreglo[]){
+	i=0;
+	while(arreglo[c] != 0){
+		SCIC2_TIE = 1;
+		c++;
+	}
+	c=0;
+	i=0;
+}
+
+check_buffer(void)
+{
+	j=1;
+	for(j = 1; j<5; j++){
+		if(temp[0] == 'R'){// RPS
+			if(temp[j] == comando_RPS[j]){
+				coincidencia++;
+			}
+			else{
+				choose_command = 1;
+				print(command_unrecognized);
+				coincidencia = 0;
+				break;
+			}
+			if(coincidencia == 2){
+				choose_command = 0;
+				print(command_ex);
+				coincidencia = 0;
+				break;
+			}
+		}
+		else if(temp[0] == 'D'){// DIR
+			if(temp[j] == comando_DIR[j]){
+				coincidencia++;
+			}
+			else{
+				choose_command = 1;
+				print(command_unrecognized);
+				coincidencia = 0;
+				break;
+			}
+			if(coincidencia == 4){
+				if(temp[5] == 'W'){
+					choose_command = 0;
+					print(command_ex);
+					coincidencia = 0;
+					break;
+				}
+				else if(temp[5] == 'C'){
+					choose_command = 0;
+					print(command_ex);
+					coincidencia = 0;
+					break;
+				}
+				else{
+					choose_command = 1;
+					print(command_unrecognized);
+					coincidencia = 0;
+					break;
+				}
+			}
+		}
+		else if(temp[0] == 'M'){// MOTOR
+			if(temp[j] == comando_MOTOR[j]){
+				coincidencia++;
+			}
+			else{
+				choose_command = 1;
+				print(command_unrecognized);
+				coincidencia = 0;
+				break;
+			}
+			if(coincidencia == 6){
+				if(temp[7] == 'F'){
+					choose_command == 0;
+					print(command_ex);
+					coincidencia = 0;
+					break;
+				}
+				else if(temp[7] == 'N'){
+					choose_command == 0;
+					print(command_ex);
+					coincidencia = 0;
+					break;
+				}
+				else{
+					print(command_unrecognized);
+					coincidencia = 0;
+					break;
+				}
+			}
+		}
+		else if(temp[0] == 'S'){// STEPCW
+			if(temp[j] == comando_STEPCW[j]){
+				coincidencia++;
+			}
+			else{
+				choose_command = 1;
+				print(command_unrecognized);
+				coincidencia = 0;
+				break;
+			}
+			if(coincidencia == 5){
+				choose_command == 0;
+				coincidencia = 0;
+				print(command_ex);
+				break;
+			}
+		}
+		else{
+			choose_command = 1;
+			print(command_unrecognized);
+			coincidencia = 0;
+			break;
+		}
+	}
+}
+
+/*       Codigo para motor        */
+interrupt 7 void RTI_TPM(void){
+	TPMSC_TOF = 0; //Timer Overflow Flag
+	correr_secuencia = 1; //Conexion entre el main y la interrupcion
+}
+
+char operacion(){ // Metodo para formatear el valor del ADC segun los pasos para que el motor de una revolucion completa
+	unsigned char op;
+	unsigned int pot;
+	pot = ADCRL; //Registro de ADC
+	op=(char)((52000 - 192*((pot)))/1000);// ecuacion para el ADC, con base en valores de 1000, valor de nuestra pendiente -.192.
+
+	return op;
+}
+
+void main(void) {
+	/*************          Codigo MOTOR         *************/
+	unsigned int value;
+	unsigned int range;
+	
+	/*************          Codigo SERIAL        *************/
+	SCIBD = 26; //busclk 4Mhz, baud rate de 9600 bps  **Baud Rate Register
+	SCIC2 = 0b00101100; // TIE = 0, TE = 1, RE = 1  ***0b10101100   0x8C
+	
+	i=0;
+	c=0;
+	counter = 0;
+	counter2 = 0;
+	size = 0;
+	coincidencia = 0;
+	j = 0;
+	choose_command = 0;
+	enable_transmission = 0;
+	
+	/*************          Codigo MOTOR         *************/
+	
+	/*          Configuracion TIMER              */
+	//(PS * TPMMOD) / FrecuencyCLK
+	// Bus clock = 4 Mhz, Preescaler = 8
+	TPMSC = 0b01001011;
+
+	/*          Configuracion ADC                */
+	ADCCFG = 0b00010000; //Configuration Register ----> Long Sample Time Configuration (Conversion completa de 10 bits) ..0x10
+	ADCSC1 = 0b00100000; //Registro de ADC ----> AD0 canal cero
+
+	PTBDD=0xF0; //Inicializa puertos
+	
+	EnableInterrupts;
+	for(;;) {
+		/*************          Codigo MOTOR         *************/
+		/*if(correr_secuencia == 1){
+			if(PTAD_PTAD2 == 1){
+				PTBD = secuencia[posicion++];
+				if(posicion == 8){ //si llega a la ultima posición regresa al inicio
+					posicion=0;
+				}
+			}
+			else{
+				PTBD = secuencia[posicion--];
+				if(i == 255){
+					posicion=7;
+				}
+			}
+			correr_secuencia = 0;
+		}
+		range = operacion();
+		if(range == 52){
+			value = (unsigned int)operacion() * 490;
+		}
+		else{
+			value = (unsigned int)operacion() * 1000;
+		}
+
+		TPMMOD = value;
+		*/
+		/*if(enable_transmission == 1)
+		{
+			enable_transmission = 0;
+			SCIC2_TIE = 1; //habilita interrupcion de transmision
+		}*/
+		__RESET_WATCHDOG();	/* feeds the dog */
+	} 
+}
