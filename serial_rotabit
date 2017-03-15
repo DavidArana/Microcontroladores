@@ -2,7 +2,7 @@
 #include "derivative.h" /* include peripheral declarations */
 
 unsigned char comando_RPS[] = {"RPS"};
-unsigned char comando_DIR[] = {"DIR"};
+unsigned char comando_DIR[] = {"DIRC"};
 unsigned char comando_MOTOR[] = {"MOTORO"};
 unsigned char comando_STEPCW[] = {"STEPCW"};
 //unsigned char comando_TEMPLIMIT[] = {"TEMPLIMIT"};
@@ -21,8 +21,9 @@ unsigned char secuencia[]={0x7F,0x3F,0xBF,0x9F,0xDF,0xCF,0xEF,0x6F};//Secuencia 
 unsigned char posicion = 0;
 unsigned int value;
 unsigned int range;
+unsigned char cambiar_direccion = 0;
 
-/*interrupt 15 UART_rx(void) //receive
+interrupt 15 UART_rx(void) //receive
 {
 	(void) SCIS1;
 	data = SCID;
@@ -37,17 +38,38 @@ unsigned int range;
 	//*if(i == 5){
 		//i = 0;
 	//}
-}*/
+}
 
-/*interrupt 16 UART_tx(void){ //transmit
+interrupt 16 UART_tx(void){ //transmit
 	(void) SCIS1;
 	seleccionar_comando();
 	//SCIC2_TIE = 0; //apaga interrupcion de transmision
-}*/
+}
 
 interrupt 7 void RTI_TPM(void){
 	TPMSC_TOF = 0; //Timer Overflow Flag
 	correr_secuencia = 1; //Conexion entre el main y la interrupcion
+}
+
+void delay(unsigned int tiempo)//genera 1 ms
+{
+	//delay formula is (PS*(MTIMMOD + 1)) / FrecuencyCLK
+	unsigned int i; /* Clock ---> 4 Mhz */
+	MTIMCLK = 0b00000100; //PS = 16 Configura el preescaler de 8 bits ----> clock source ÷ 16 (250 Khz frecuency = 0.25 Mhz)
+	MTIMMOD = 249; // (cuenta hasta 249) 0b11111010
+	//MTIMSC = 0;
+	MTIMSC_TOIE = 1; //Habilita la interrupcion
+	/*if(MTIMSC_TOF == 1){//Bandera de overflow que se activa cuando se llega a la cuenta
+		MTIMSC_TOF = 0;
+		MTIMSC_TRST = 1; //Resetea el contador
+	}*/
+	for(i = 0; i < tiempo; i++){
+		do{
+			__RESET_WATCHDOG();
+		}while(MTIMSC_TOF == 0);
+		MTIMSC_TRST = 1;
+	}
+	//__RESET_WATCHDOG();
 }
 
 seleccionar_comando(void){
@@ -117,14 +139,16 @@ check_buffer(void)
 				i=0;
 				break;
 			}
-			if(coincidencia == 4){
-				if(temp[5] == 'W'){
+			if(coincidencia == 3){
+				if(temp[4] == 'W'){ //izquierda
+					cambiar_direccion = 0;
 					choose_command = 0;
 					print(command_ex);
 					coincidencia = 0;
 					break;
 				}
-				else if(temp[5] == 'C'){
+				else if(temp[4] == 'C'){ //derecha
+					cambiar_direccion = 1;
 					choose_command = 0;
 					print(command_ex);
 					coincidencia = 0;
@@ -145,13 +169,14 @@ check_buffer(void)
 				if(coincidencia == 5){
 					if(temp[6] == 'F'){
 						choose_command == 0;
+						on_off = 0;
 						print(command_ex);
-						value = 0;
 						coincidencia = 0;
 						break;
 					}
 					else if(temp[6] == 'N'){
 						choose_command == 0;
+						on_off = 1;
 						print(command_ex);
 						coincidencia = 0;
 						break;
@@ -220,9 +245,10 @@ void main(void) {
 	ADCSC1 = 0b00100000; //Registro de ADC ----> AD0 canal cero
 
 	PTBDD=0xF0; //Inicializa puertos
+	
 	/*************          Codigo SERIAL        *************/
-	//SCIBD = 26; //busclk 4Mhz, baud rate de 9600 bps  **Baud Rate Register
-	//SCIC2 = 0b00101100; // TIE = 0, TE = 1, RE = 1  ***0b10101100   0x8C
+	SCIBD = 26; //busclk 4Mhz, baud rate de 9600 bps  **Baud Rate Register
+	SCIC2 = 0b00101100; // TIE = 0, TE = 1, RE = 1  ***0b10101100   0x8C
 
 	i=0;
 	c=0;
@@ -234,6 +260,8 @@ void main(void) {
 	choose_command = 0;
 	count_comando = 0;
 	enable_transmission = 0;
+	on_off = 1;
+	
 	value = 0;
 	range = 0;
 
@@ -253,19 +281,21 @@ void main(void) {
 	for(;;) {
 		/*************          Codigo MOTOR         *************/
 		if(correr_secuencia == 1){
-			if(PTAD_PTAD2 == 1){
-				PTBD = secuencia[posicion++];
-				if(posicion == 8){ //si llega a la ultima posición regresa al inicio
-					posicion=0;
+			if(on_off == 1){
+				if(cambiar_direccion == 1){
+					PTBD = secuencia[posicion++];
+					if(posicion == 8){ //si llega a la ultima posición regresa al inicio
+						posicion=0;
+					}
 				}
-			}
-			else{
-				PTBD = secuencia[posicion--];
-				if(i == 255){
-					posicion=7;
+				else{
+					PTBD = secuencia[posicion--];
+					if(posicion == 255){
+						posicion=7;
+					}
 				}
+				correr_secuencia = 0;
 			}
-			correr_secuencia = 0;
 		}
 		range = operacion();
 		if(range == 52){
@@ -274,8 +304,8 @@ void main(void) {
 		else{
 			value = (unsigned int)operacion() * 1000;
 		}
-
 		TPMMOD = value;
+		
 
 		/*if(enable_transmission == 1)
 		{
