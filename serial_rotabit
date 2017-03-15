@@ -5,14 +5,14 @@ unsigned char comando_RPS[] = {"RPS"};
 unsigned char comando_DIR[] = {"DIR:C"};
 unsigned char comando_MOTOR[] = {"MOTOR:O"};
 unsigned char comando_STEPCW[] = {"STEPCW"};
-unsigned char comando_TEMPLIMIT[] = {"TEMPLIMIT"};
+//unsigned char comando_TEMPLIMIT[] = {"TEMPLIMIT"};
 unsigned char command_ex[] = {"Comando ejecutado"};
 unsigned char command_unrecognized[] = {"Comando no reconocido"};
 unsigned char i, c, caracter, on_off, size, choose_command;
 unsigned char data;
-unsigned char temp[6];
+unsigned char temp[10];
 unsigned char arreglo_vacio[6];
-unsigned char counter, counter2, j, coincidencia;
+unsigned char counter, counter2, j, coincidencia, count_comando;
 unsigned char enable_transmission;
 
 /*Variables MOTOR*/
@@ -32,9 +32,9 @@ interrupt 15 UART_rx(void) //receive
 	else{
 		temp[i++] = data;
 	}
-	if(i == 5){
+	/*if(i == 5){
 		i = 0;
-	}
+	}*/
 }
 
 interrupt 16 UART_tx(void){ //transmit
@@ -45,41 +45,41 @@ interrupt 16 UART_tx(void){ //transmit
 
 seleccionar_comando(){
 	if(choose_command == 0){
-		if(command_ex[i] == 0){
+		if(command_ex[count_comando] == 0){
 			SCIC2_TIE = 0;
-			i=0;
+			count_comando=0;
 			SCID = '\n';
 		}
 		else{
-			SCID = command_ex[i++];
+			SCID = command_ex[count_comando++];
 		}
 	}
 	else{
-		if(command_unrecognized[i] == 0){
+		if(command_unrecognized[count_comando] == 0){
 			SCIC2_TIE = 0;
-			i=0;
+			count_comando=0;
 			SCID = '\n';
 		}
 		else{
-			SCID = command_unrecognized[i++];
+			SCID = command_unrecognized[count_comando++];
 		}
 	}
 }
 
 print(unsigned char arreglo[]){
-	i=0;
+	//i=0;
 	while(arreglo[c] != 0){
 		SCIC2_TIE = 1;
 		c++;
 	}
 	c=0;
-	i=0;
+	//i=0;
 }
 
 check_buffer(void)
 {
 	j=1;
-	for(j = 1; j<5; j++){
+	for(j = 1; j<10; j++){
 		if(temp[0] == 'R'){// RPS
 			if(temp[j] == comando_RPS[j]){
 				coincidencia++;
@@ -88,6 +88,7 @@ check_buffer(void)
 				choose_command = 1;
 				print(command_unrecognized);
 				coincidencia = 0;
+				i=0;
 				break;
 			}
 			if(coincidencia == 2){
@@ -105,6 +106,7 @@ check_buffer(void)
 				choose_command = 1;
 				print(command_unrecognized);
 				coincidencia = 0;
+				i=0;
 				break;
 			}
 			if(coincidencia == 4){
@@ -124,6 +126,7 @@ check_buffer(void)
 					choose_command = 1;
 					print(command_unrecognized);
 					coincidencia = 0;
+					i=0;
 					break;
 				}
 			}
@@ -136,6 +139,7 @@ check_buffer(void)
 				choose_command = 1;
 				print(command_unrecognized);
 				coincidencia = 0;
+				i=0;
 				break;
 			}
 			if(coincidencia == 6){
@@ -152,8 +156,10 @@ check_buffer(void)
 					break;
 				}
 				else{
+					choose_command = 1;
 					print(command_unrecognized);
 					coincidencia = 0;
+					i=0;
 					break;
 				}
 			}
@@ -166,6 +172,7 @@ check_buffer(void)
 				choose_command = 1;
 				print(command_unrecognized);
 				coincidencia = 0;
+				i=0;
 				break;
 			}
 			if(coincidencia == 5){
@@ -176,12 +183,13 @@ check_buffer(void)
 			}
 		}
 		else{
+			i=0;
 			choose_command = 1;
 			print(command_unrecognized);
 			coincidencia = 0;
 			break;
 		}
-	}//Borrar
+	}
 }
 
 /*       Codigo para motor        */
@@ -216,6 +224,7 @@ void main(void) {
 	coincidencia = 0;
 	j = 0;
 	choose_command = 0;
+	count_comando = 0;
 	enable_transmission = 0;
 	
 	/*************          Codigo MOTOR         *************/
