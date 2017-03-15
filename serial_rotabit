@@ -8,13 +8,14 @@ unsigned char comando_STEPCW[] = {"STEPCW"};
 //unsigned char comando_TEMPLIMIT[] = {"TEMPLIMIT"};
 unsigned char command_ex[] = {"Comando ejecutado"};
 unsigned char command_unrecognized[] = {"Comando no reconocido"};
+unsigned char command_turnoff[] = {"Apagar motor"};
 unsigned char i, c, caracter, on_off, size, choose_command;
 unsigned char data;
 unsigned char temp[10];
 unsigned char arreglo_vacio[6];
 unsigned char counter, counter2, j, coincidencia, count_comando, numero_grados, duty_cycle_value, new_duty_cycle;
 unsigned char enable_transmission, unidades, decenas;
-unsigned int centenas, grados, mover_en_grados;
+unsigned int centenas, grados, mover_en_grados, movimiento, dummy;
 /*Variables MOTOR*/
 unsigned char correr_secuencia = 0;
 unsigned char secuencia[]={0x7F,0x3F,0xBF,0x9F,0xDF,0xCF,0xEF,0x6F};//Secuencia de pasos usando lógica negativa (código gray)
@@ -22,6 +23,7 @@ unsigned char posicion = 0;
 unsigned int value;
 unsigned int range;
 unsigned char cambiar_direccion = 0;
+unsigned int contador_timer;
 
 interrupt 15 UART_rx(void) //receive
 {
@@ -46,31 +48,10 @@ interrupt 16 UART_tx(void){ //transmit
 	//SCIC2_TIE = 0; //apaga interrupcion de transmision
 }
 
-interrupt 7 void RTI_TPM(void){
+/*interrupt 7 void RTI_TPM(void){
 	TPMSC_TOF = 0; //Timer Overflow Flag
 	correr_secuencia = 1; //Conexion entre el main y la interrupcion
-}
-
-void delay(unsigned int tiempo)//genera 1 ms
-{
-	//delay formula is (PS*(MTIMMOD + 1)) / FrecuencyCLK
-	unsigned int i; /* Clock ---> 4 Mhz */
-	MTIMCLK = 0b00000100; //PS = 16 Configura el preescaler de 8 bits ----> clock source ÷ 16 (250 Khz frecuency = 0.25 Mhz)
-	MTIMMOD = 249; // (cuenta hasta 249) 0b11111010
-	//MTIMSC = 0;
-	MTIMSC_TOIE = 1; //Habilita la interrupcion
-	/*if(MTIMSC_TOF == 1){//Bandera de overflow que se activa cuando se llega a la cuenta
-		MTIMSC_TOF = 0;
-		MTIMSC_TRST = 1; //Resetea el contador
-	}*/
-	for(i = 0; i < tiempo; i++){
-		do{
-			__RESET_WATCHDOG();
-		}while(MTIMSC_TOF == 0);
-		MTIMSC_TRST = 1;
-	}
-	//__RESET_WATCHDOG();
-}
+}*/
 
 seleccionar_comando(void){
 	if(choose_command == 0){
@@ -83,7 +64,17 @@ seleccionar_comando(void){
 			SCID = command_ex[count_comando++];
 		}
 	}
-	else{
+	if(choose_command == 2){
+		if(command_turnoff[count_comando] == 0){
+			SCIC2_TIE = 0;
+			count_comando=0;
+			SCID = '\n';
+		}
+		else{
+			SCID = command_turnoff[count_comando++];
+		}
+	}
+	if(choose_command == 1){
 		if(command_unrecognized[count_comando] == 0){
 			SCIC2_TIE = 0;
 			count_comando=0;
@@ -177,6 +168,7 @@ check_buffer(void)
 					else if(temp[6] == 'N'){
 						choose_command = 0;
 						on_off = 1;
+						movimiento = 1; //************************QUITAR
 						print(command_ex);
 						coincidencia = 0;
 						break;
@@ -234,10 +226,18 @@ check_buffer(void)
 					}
 					grados = unidades + decenas + centenas;
 					choose_command = 0;
-					mover_en_grados = 1;
+					//*********************************************************
 					//on_off = 0;
+					//if(on_off == 0){
+					//choose_command = 0;
+					movimiento = 1;
 					print(command_ex);
 					coincidencia = 0;
+					//}
+					//else{
+						//choose_command = 2;
+						//print(command_turnoff);
+					//}
 					break;
 				}
 				else{
@@ -257,6 +257,27 @@ check_buffer(void)
 			break;
 		}
 	}
+}
+
+void delay(unsigned int tiempo)//genera 1 ms (probar)
+{
+	//delay formula is (PS*(MTIMMOD + 1)) / FrecuencyCLK
+	unsigned int i; /* Clock ---> 4 Mhz */
+	MTIMCLK = 0b00000100; //PS = 16 Configura el preescaler de 8 bits ----> clock source ÷ 16 (250 Khz frecuency = 0.25 Mhz)
+	MTIMMOD = 0b11111001; // (cuenta hasta 249) 0b11111010
+	MTIMSC = 0;
+	//MTIMSC_TOIE = 1; //Habilita la interrupcion
+	/*if(MTIMSC_TOF == 1){//Bandera de overflow que se activa cuando se llega a la cuenta
+		MTIMSC_TOF = 0;
+		MTIMSC_TRST = 1; //Resetea el contador
+	}*/
+	for(i = 0; i < tiempo; i++){
+		do{
+			__RESET_WATCHDOG();
+		}while(MTIMSC_TOF == 0);
+		MTIMSC_TRST = 1;
+	}
+	//__RESET_WATCHDOG();
 }
 
 
@@ -280,7 +301,9 @@ unsigned int operacion_grados(unsigned int grados_parametro){
 void main(void) {
 	/*************          Codigo MOTOR         *************/
 	//unsigned int value;
-	TPMSC = 0b01001011;
+	//(PS * TPMMOD) / FrecuencyCLK
+	// Bus clock = 4 Mhz, Preescaler = 4
+	//TPMSC = 0b01001011;
 	ADCCFG = 0b00010000; //Configuration Register ----> Long Sample Time Configuration (Conversion completa de 10 bits) ..0x10
 	ADCSC1 = 0b00100000; //Registro de ADC ----> AD0 canal cero
 
@@ -305,23 +328,34 @@ void main(void) {
 	mover_en_grados = 0;
 	value = 0;
 	range = 0;
+	movimiento = 0;
+	dummy = 0;
 
 	/*************          Codigo MOTOR         *************/
 
 	/*          Configuracion TIMER              */
-	//(PS * TPMMOD) / FrecuencyCLK
-	// Bus clock = 4 Mhz, Preescaler = 8
+	
 	
 
 	/*          Configuracion ADC                */
 	
-
-	
-
 	EnableInterrupts;
 	for(;;) {
+		if(movimiento == 1){
+			while(mover_en_grados < 96){
+				mover_en_grados++;
+				PTBD = secuencia[posicion++];
+				if(posicion == 8){ //si llega a la ultima posición regresa al inicio
+					posicion=0;
+				}
+				delay(52);
+			}
+			dummy = 5;
+			mover_en_grados = 0;
+			movimiento=0;
+		}
 		/*************          Codigo MOTOR         *************/
-		if(correr_secuencia == 1){
+		/*if(correr_secuencia == 1){
 			if(on_off == 1){ // 1 ----> motor encendido
 				if(cambiar_direccion == 1){
 					PTBD = secuencia[posicion++];
@@ -337,50 +371,16 @@ void main(void) {
 				}
 				correr_secuencia = 0;
 			}
-			else{
-				if(mover_en_grados == 1){
-					__RESET_WATCHDOG();
-					if(cambiar_direccion == 1){
-						PTBD = secuencia[posicion++];
-						if(posicion == 8){ //si llega a la ultima posición regresa al inicio
-							posicion=0;
-						}
-					}
-					else{
-						PTBD = secuencia[posicion--];
-						if(posicion == 255){
-							posicion=7;
-						}
-					}
-					range = operacion_grados(grados);
-					TPMMOD = range;
-					__RESET_WATCHDOG();
-					/*if(cambiar_direccion == 1){
-						PTBD = secuencia[posicion++];
-						if(posicion == 8){ //si llega a la ultima posición regresa al inicio
-							posicion=0;
-						}
-					}
-					else{
-						PTBD = secuencia[posicion--];
-						if(posicion == 255){
-							posicion=7;
-						}
-					}*/
-					//correr_secuencia = 0;
-					mover_en_grados = 0;
-				}
-			}
-		}
-		range = operacion_grados(grados) * 266;
-		TPMMOD = value;
-		
-
-		/*if(enable_transmission == 1)
-		{
-			enable_transmission = 0;
-			SCIC2_TIE = 1; //habilita interrupcion de transmision
 		}*/
+		/*range = operacion();
+		if(range == 52){
+			value = (unsigned int)operacion() * 490;
+		}
+		else{
+			value = (unsigned int)operacion() * 1000;
+		}
+
+		TPMMOD = value;*/
 		__RESET_WATCHDOG();	/* feeds the dog */
 	} 
 }
