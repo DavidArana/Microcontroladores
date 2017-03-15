@@ -48,10 +48,10 @@ interrupt 16 UART_tx(void){ //transmit
 	//SCIC2_TIE = 0; //apaga interrupcion de transmision
 }
 
-/*interrupt 7 void RTI_TPM(void){
+interrupt 7 void RTI_TPM(void){
 	TPMSC_TOF = 0; //Timer Overflow Flag
 	correr_secuencia = 1; //Conexion entre el main y la interrupcion
-}*/
+}
 
 seleccionar_comando(void){
 	if(choose_command == 0){
@@ -259,28 +259,6 @@ check_buffer(void)
 	}
 }
 
-void delay(unsigned int tiempo)//genera 1 ms (probar)
-{
-	//delay formula is (PS*(MTIMMOD + 1)) / FrecuencyCLK
-	unsigned int i; /* Clock ---> 4 Mhz */
-	MTIMCLK = 0b00000100; //PS = 16 Configura el preescaler de 8 bits ----> clock source ÷ 16 (250 Khz frecuency = 0.25 Mhz)
-	MTIMMOD = 0b11111001; // (cuenta hasta 249) 0b11111010
-	MTIMSC = 0;
-	//MTIMSC_TOIE = 1; //Habilita la interrupcion
-	/*if(MTIMSC_TOF == 1){//Bandera de overflow que se activa cuando se llega a la cuenta
-		MTIMSC_TOF = 0;
-		MTIMSC_TRST = 1; //Resetea el contador
-	}*/
-	for(i = 0; i < tiempo; i++){
-		do{
-			__RESET_WATCHDOG();
-		}while(MTIMSC_TOF == 0);
-		MTIMSC_TRST = 1;
-	}
-	//__RESET_WATCHDOG();
-}
-
-
 /*       Codigo para motor        */
 
 char operacion(){ // Metodo para formatear el valor del ADC segun los pasos para que el motor de una revolucion completa
@@ -303,9 +281,9 @@ void main(void) {
 	//unsigned int value;
 	//(PS * TPMMOD) / FrecuencyCLK
 	// Bus clock = 4 Mhz, Preescaler = 4
-	//TPMSC = 0b01001011;
-	ADCCFG = 0b00010000; //Configuration Register ----> Long Sample Time Configuration (Conversion completa de 10 bits) ..0x10
-	ADCSC1 = 0b00100000; //Registro de ADC ----> AD0 canal cero
+	TPMSC = 0b01001010;
+	//ADCCFG = 0b00010000; //Configuration Register ----> Long Sample Time Configuration (Conversion completa de 10 bits) ..0x10
+	//ADCSC1 = 0b00100000; //Registro de ADC ----> AD0 canal cero
 
 	PTBDD=0xF0; //Inicializa puertos
 	
@@ -341,46 +319,27 @@ void main(void) {
 	
 	EnableInterrupts;
 	for(;;) {
-		if(movimiento == 1){
-			vueltas_arreglo = operacion_grados(grados);
-			while(mover_en_grados < vueltas_arreglo){
-				mover_en_grados++;
-				PTBD = secuencia[posicion++];
-				if(posicion == 8){ //si llega a la ultima posición regresa al inicio
-					posicion=0;
-				}
-				delay(52);
-			}
-			mover_en_grados = 0;
-			movimiento=0;
-		}
-		/*************          Codigo MOTOR         *************/
-		/*if(correr_secuencia == 1){
-			if(on_off == 1){ // 1 ----> motor encendido
-				if(cambiar_direccion == 1){
+		if(correr_secuencia == 1){
+			if(movimiento == 1){
+				//correr_secuencia = 1;
+				//TPMMOD = 52000;
+				vueltas_arreglo = operacion_grados(grados);
+				if(mover_en_grados < vueltas_arreglo){
+					mover_en_grados++;
 					PTBD = secuencia[posicion++];
 					if(posicion == 8){ //si llega a la ultima posición regresa al inicio
 						posicion=0;
 					}
 				}
 				else{
-					PTBD = secuencia[posicion--];
-					if(posicion == 255){
-						posicion=7;
-					}
+					mover_en_grados = 0;
+					movimiento=0;
+					//correr_secuencia = 0;
 				}
 				correr_secuencia = 0;
 			}
-		}*/
-		/*range = operacion();
-		if(range == 52){
-			value = (unsigned int)operacion() * 490;
 		}
-		else{
-			value = (unsigned int)operacion() * 1000;
-		}
-
-		TPMMOD = value;*/
-		__RESET_WATCHDOG();	/* feeds the dog */
+		TPMMOD = 52000;
+		__RESET_WATCHDOG();
 	} 
 }
