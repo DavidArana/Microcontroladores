@@ -12,9 +12,9 @@ unsigned char i, c, caracter, on_off, size, choose_command;
 unsigned char data;
 unsigned char temp[10];
 unsigned char arreglo_vacio[6];
-unsigned char counter, counter2, j, coincidencia, count_comando;
-unsigned char enable_transmission;
-
+unsigned char counter, counter2, j, coincidencia, count_comando, numero_grados, duty_cycle_value, new_duty_cycle;
+unsigned char enable_transmission, unidades, decenas;
+unsigned int centenas, grados, mover_en_grados;
 /*Variables MOTOR*/
 unsigned char correr_secuencia = 0;
 unsigned char secuencia[]={0x7F,0x3F,0xBF,0x9F,0xDF,0xCF,0xEF,0x6F};//Secuencia de pasos usando lógica negativa (código gray)
@@ -199,21 +199,54 @@ check_buffer(void)
 			}
 		}
 		else if(temp[0] == 'S'){// STEPCW
-			if(temp[j] == comando_STEPCW[j]){
-				coincidencia++;
-				if(coincidencia == 5){
-					choose_command = 0;
-					coincidencia = 0;
-					print(command_ex);
-					break;
+			if(coincidencia < 5){
+				if(temp[j] == comando_STEPCW[j]){
+					coincidencia++;
 				}
 			}
 			else{
-				choose_command = 1;
-				print(command_unrecognized);
-				coincidencia = 0;
-				i=0;
-				break;
+				if((temp[6] >= '0') && (temp[6] <= '9')){
+					centenas = temp[6] - 0x30;
+					centenas*=100;
+					coincidencia++;
+					if((temp[7] >= '0') && (temp[7] <= '9')){
+						decenas = temp[7] - 0x30;
+						decenas*=10;
+						coincidencia++;
+						if((temp[8] >= '0') && (temp[8] <= '9')){
+							unidades = temp[8] - 0x30;
+							coincidencia++;
+						}
+						else{
+							choose_command = 1;
+							print(command_unrecognized);
+							coincidencia = 0;
+							i=0;
+							break;
+						}
+					}
+					else{
+						choose_command = 1;
+						print(command_unrecognized);
+						coincidencia = 0;
+						i=0;
+						break;
+					}
+					grados = unidades + decenas + centenas;
+					choose_command = 0;
+					mover_en_grados = 1;
+					//on_off = 0;
+					print(command_ex);
+					coincidencia = 0;
+					break;
+				}
+				else{
+					choose_command = 1;
+					print(command_unrecognized);
+					coincidencia = 0;
+					i=0;
+					break;
+				}
 			}
 		}
 		else{
@@ -226,6 +259,7 @@ check_buffer(void)
 	}
 }
 
+
 /*       Codigo para motor        */
 
 char operacion(){ // Metodo para formatear el valor del ADC segun los pasos para que el motor de una revolucion completa
@@ -235,6 +269,12 @@ char operacion(){ // Metodo para formatear el valor del ADC segun los pasos para
 	op=(char)((52000 - 192*((pot)))/1000);// ecuacion para el ADC, con base en valores de 1000, valor de nuestra pendiente -.192.
 
 	return op;
+}
+
+unsigned int operacion_grados(unsigned int grados_parametro){
+	unsigned long div;
+	div=(long)(grados_parametro*96)/(360);
+	return (unsigned int)div;
 }
 
 void main(void) {
@@ -261,7 +301,8 @@ void main(void) {
 	count_comando = 0;
 	enable_transmission = 0;
 	on_off = 1;
-	
+	numero_grados = 0;
+	mover_en_grados = 0;
 	value = 0;
 	range = 0;
 
@@ -281,7 +322,7 @@ void main(void) {
 	for(;;) {
 		/*************          Codigo MOTOR         *************/
 		if(correr_secuencia == 1){
-			if(on_off == 1){
+			if(on_off == 1){ // 1 ----> motor encendido
 				if(cambiar_direccion == 1){
 					PTBD = secuencia[posicion++];
 					if(posicion == 8){ //si llega a la ultima posición regresa al inicio
@@ -296,14 +337,42 @@ void main(void) {
 				}
 				correr_secuencia = 0;
 			}
+			else{
+				if(mover_en_grados == 1){
+					__RESET_WATCHDOG();
+					if(cambiar_direccion == 1){
+						PTBD = secuencia[posicion++];
+						if(posicion == 8){ //si llega a la ultima posición regresa al inicio
+							posicion=0;
+						}
+					}
+					else{
+						PTBD = secuencia[posicion--];
+						if(posicion == 255){
+							posicion=7;
+						}
+					}
+					range = operacion_grados(grados);
+					TPMMOD = range;
+					__RESET_WATCHDOG();
+					/*if(cambiar_direccion == 1){
+						PTBD = secuencia[posicion++];
+						if(posicion == 8){ //si llega a la ultima posición regresa al inicio
+							posicion=0;
+						}
+					}
+					else{
+						PTBD = secuencia[posicion--];
+						if(posicion == 255){
+							posicion=7;
+						}
+					}*/
+					//correr_secuencia = 0;
+					mover_en_grados = 0;
+				}
+			}
 		}
-		range = operacion();
-		if(range == 52){
-			value = (unsigned int)operacion() * 490;
-		}
-		else{
-			value = (unsigned int)operacion() * 1000;
-		}
+		range = operacion_grados(grados) * 266;
 		TPMMOD = value;
 		
 
