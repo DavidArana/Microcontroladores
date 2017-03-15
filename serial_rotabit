@@ -15,7 +15,7 @@ unsigned char temp[10];
 unsigned char arreglo_vacio[6];
 unsigned char counter, counter2, j, coincidencia, count_comando, numero_grados, duty_cycle_value, new_duty_cycle;
 unsigned char enable_transmission, unidades, decenas;
-unsigned int centenas, grados, mover_en_grados, movimiento, dummy;
+unsigned int centenas, grados, mover_en_grados, movimiento, vueltas_arreglo;
 /*Variables MOTOR*/
 unsigned char correr_secuencia = 0;
 unsigned char secuencia[]={0x7F,0x3F,0xBF,0x9F,0xDF,0xCF,0xEF,0x6F};//Secuencia de pasos usando lógica negativa (código gray)
@@ -293,9 +293,9 @@ char operacion(){ // Metodo para formatear el valor del ADC segun los pasos para
 }
 
 unsigned int operacion_grados(unsigned int grados_parametro){
-	unsigned long div;
-	div=(long)(grados_parametro*96)/(360);
-	return (unsigned int)div;
+	unsigned int div;
+	div=(((long)grados_parametro)*96)/(360);
+	return div;
 }
 
 void main(void) {
@@ -329,7 +329,7 @@ void main(void) {
 	value = 0;
 	range = 0;
 	movimiento = 0;
-	dummy = 0;
+	vueltas_arreglo = 0;
 
 	/*************          Codigo MOTOR         *************/
 
@@ -342,7 +342,8 @@ void main(void) {
 	EnableInterrupts;
 	for(;;) {
 		if(movimiento == 1){
-			while(mover_en_grados < 96){
+			vueltas_arreglo = operacion_grados(grados);
+			while(mover_en_grados < vueltas_arreglo){
 				mover_en_grados++;
 				PTBD = secuencia[posicion++];
 				if(posicion == 8){ //si llega a la ultima posición regresa al inicio
@@ -350,7 +351,6 @@ void main(void) {
 				}
 				delay(52);
 			}
-			dummy = 5;
 			mover_en_grados = 0;
 			movimiento=0;
 		}
