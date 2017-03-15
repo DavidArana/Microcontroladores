@@ -2,8 +2,8 @@
 #include "derivative.h" /* include peripheral declarations */
 
 unsigned char comando_RPS[] = {"RPS"};
-unsigned char comando_DIR[] = {"DIR:C"};
-unsigned char comando_MOTOR[] = {"MOTOR:O"};
+unsigned char comando_DIR[] = {"DIR"};
+unsigned char comando_MOTOR[] = {"MOTORO"};
 unsigned char comando_STEPCW[] = {"STEPCW"};
 //unsigned char comando_TEMPLIMIT[] = {"TEMPLIMIT"};
 unsigned char command_ex[] = {"Comando ejecutado"};
@@ -19,31 +19,38 @@ unsigned char enable_transmission;
 unsigned char correr_secuencia = 0;
 unsigned char secuencia[]={0x7F,0x3F,0xBF,0x9F,0xDF,0xCF,0xEF,0x6F};//Secuencia de pasos usando lógica negativa (código gray)
 unsigned char posicion = 0;
+unsigned int value;
+unsigned int range;
 
-interrupt 15 UART_rx(void) //receive
+/*interrupt 15 UART_rx(void) //receive
 {
 	(void) SCIS1;
 	data = SCID;
 	if(data == 13){
-		i=0;
+		//i=0;
 		SCID = '\n';
 		check_buffer();
 	}
 	else{
 		temp[i++] = data;
 	}
-	/*if(i == 5){
-		i = 0;
-	}*/
-}
+	//*if(i == 5){
+		//i = 0;
+	//}
+}*/
 
-interrupt 16 UART_tx(void){ //transmit
+/*interrupt 16 UART_tx(void){ //transmit
 	(void) SCIS1;
 	seleccionar_comando();
 	//SCIC2_TIE = 0; //apaga interrupcion de transmision
+}*/
+
+interrupt 7 void RTI_TPM(void){
+	TPMSC_TOF = 0; //Timer Overflow Flag
+	correr_secuencia = 1; //Conexion entre el main y la interrupcion
 }
 
-seleccionar_comando(){
+seleccionar_comando(void){
 	if(choose_command == 0){
 		if(command_ex[count_comando] == 0){
 			SCIC2_TIE = 0;
@@ -67,12 +74,13 @@ seleccionar_comando(){
 }
 
 print(unsigned char arreglo[]){
-	//i=0;
+	i=0;
 	while(arreglo[c] != 0){
 		SCIC2_TIE = 1;
 		c++;
 	}
 	c=0;
+	return 0;
 	//i=0;
 }
 
@@ -134,6 +142,28 @@ check_buffer(void)
 		else if(temp[0] == 'M'){// MOTOR
 			if(temp[j] == comando_MOTOR[j]){
 				coincidencia++;
+				if(coincidencia == 5){
+					if(temp[6] == 'F'){
+						choose_command == 0;
+						print(command_ex);
+						value = 0;
+						coincidencia = 0;
+						break;
+					}
+					else if(temp[6] == 'N'){
+						choose_command == 0;
+						print(command_ex);
+						coincidencia = 0;
+						break;
+					}
+					else{
+						choose_command = 1;
+						print(command_unrecognized);
+						coincidencia = 0;
+						i=0;
+						break;
+					}
+				}
 			}
 			else{
 				choose_command = 1;
@@ -141,27 +171,6 @@ check_buffer(void)
 				coincidencia = 0;
 				i=0;
 				break;
-			}
-			if(coincidencia == 6){
-				if(temp[7] == 'F'){
-					choose_command == 0;
-					print(command_ex);
-					coincidencia = 0;
-					break;
-				}
-				else if(temp[7] == 'N'){
-					choose_command == 0;
-					print(command_ex);
-					coincidencia = 0;
-					break;
-				}
-				else{
-					choose_command = 1;
-					print(command_unrecognized);
-					coincidencia = 0;
-					i=0;
-					break;
-				}
 			}
 		}
 		else if(temp[0] == 'S'){// STEPCW
@@ -193,10 +202,6 @@ check_buffer(void)
 }
 
 /*       Codigo para motor        */
-interrupt 7 void RTI_TPM(void){
-	TPMSC_TOF = 0; //Timer Overflow Flag
-	correr_secuencia = 1; //Conexion entre el main y la interrupcion
-}
 
 char operacion(){ // Metodo para formatear el valor del ADC segun los pasos para que el motor de una revolucion completa
 	unsigned char op;
@@ -209,13 +214,16 @@ char operacion(){ // Metodo para formatear el valor del ADC segun los pasos para
 
 void main(void) {
 	/*************          Codigo MOTOR         *************/
-	unsigned int value;
-	unsigned int range;
-	
+	//unsigned int value;
+	TPMSC = 0b01001011;
+	ADCCFG = 0b00010000; //Configuration Register ----> Long Sample Time Configuration (Conversion completa de 10 bits) ..0x10
+	ADCSC1 = 0b00100000; //Registro de ADC ----> AD0 canal cero
+
+	PTBDD=0xF0; //Inicializa puertos
 	/*************          Codigo SERIAL        *************/
-	SCIBD = 26; //busclk 4Mhz, baud rate de 9600 bps  **Baud Rate Register
-	SCIC2 = 0b00101100; // TIE = 0, TE = 1, RE = 1  ***0b10101100   0x8C
-	
+	//SCIBD = 26; //busclk 4Mhz, baud rate de 9600 bps  **Baud Rate Register
+	//SCIC2 = 0b00101100; // TIE = 0, TE = 1, RE = 1  ***0b10101100   0x8C
+
 	i=0;
 	c=0;
 	counter = 0;
@@ -226,24 +234,25 @@ void main(void) {
 	choose_command = 0;
 	count_comando = 0;
 	enable_transmission = 0;
-	
+	value = 0;
+	range = 0;
+
 	/*************          Codigo MOTOR         *************/
-	
+
 	/*          Configuracion TIMER              */
 	//(PS * TPMMOD) / FrecuencyCLK
 	// Bus clock = 4 Mhz, Preescaler = 8
-	TPMSC = 0b01001011;
+	
 
 	/*          Configuracion ADC                */
-	ADCCFG = 0b00010000; //Configuration Register ----> Long Sample Time Configuration (Conversion completa de 10 bits) ..0x10
-	ADCSC1 = 0b00100000; //Registro de ADC ----> AD0 canal cero
-
-	PTBDD=0xF0; //Inicializa puertos
 	
+
+	
+
 	EnableInterrupts;
 	for(;;) {
 		/*************          Codigo MOTOR         *************/
-		/*if(correr_secuencia == 1){
+		if(correr_secuencia == 1){
 			if(PTAD_PTAD2 == 1){
 				PTBD = secuencia[posicion++];
 				if(posicion == 8){ //si llega a la ultima posición regresa al inicio
@@ -267,7 +276,7 @@ void main(void) {
 		}
 
 		TPMMOD = value;
-		*/
+
 		/*if(enable_transmission == 1)
 		{
 			enable_transmission = 0;
