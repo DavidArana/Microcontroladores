@@ -168,14 +168,14 @@ check_buffer(void)
 				coincidencia++;
 				if(coincidencia == 5){
 					if(temp[6] == 'F'){
-						choose_command == 0;
+						choose_command = 0;
 						on_off = 0;
 						print(command_ex);
 						coincidencia = 0;
 						break;
 					}
 					else if(temp[6] == 'N'){
-						choose_command == 0;
+						choose_command = 0;
 						on_off = 1;
 						print(command_ex);
 						coincidencia = 0;
@@ -201,18 +201,18 @@ check_buffer(void)
 		else if(temp[0] == 'S'){// STEPCW
 			if(temp[j] == comando_STEPCW[j]){
 				coincidencia++;
+				if(coincidencia == 5){
+					choose_command = 0;
+					coincidencia = 0;
+					print(command_ex);
+					break;
+				}
 			}
 			else{
 				choose_command = 1;
 				print(command_unrecognized);
 				coincidencia = 0;
 				i=0;
-				break;
-			}
-			if(coincidencia == 5){
-				choose_command == 0;
-				coincidencia = 0;
-				print(command_ex);
 				break;
 			}
 		}
