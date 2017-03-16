@@ -2,20 +2,21 @@
 #include "derivative.h" /* include peripheral declarations */
 
 unsigned char comando_RPS[] = {"RPS"};
-unsigned char comando_DIR[] = {"DIRC"};
-unsigned char comando_MOTOR[] = {"MOTORO"};
+unsigned char comando_DIR[] = {"DIR:C"};
+unsigned char comando_MOTOR[] = {"MOTOR:O"};
 unsigned char comando_STEPCW[] = {"STEPCW"};
-//unsigned char comando_TEMPLIMIT[] = {"TEMPLIMIT"};
+unsigned char comando_TEMPLIMIT[] = {"TEMPLIMIT"};
 unsigned char command_ex[] = {"Comando ejecutado"};
 unsigned char command_unrecognized[] = {"Comando no reconocido"};
 unsigned char command_turnoff[] = {"Apagar motor"};
 unsigned char i, c, caracter, on_off, size, choose_command;
 unsigned char data;
-unsigned char temp[10];
+unsigned char temp[16];
 unsigned char arreglo_vacio[6];
+unsigned char cuenta = 15;
 unsigned char counter, counter2, j, coincidencia, count_comando, numero_grados, duty_cycle_value, new_duty_cycle;
-unsigned char enable_transmission, unidades, decenas;
-unsigned int centenas, grados, mover_en_grados, movimiento, vueltas_arreglo;
+unsigned char enable_transmission, unidades, decenas, decenas2, unidades2, timer, decenas3, unidades3, decimal;
+unsigned int centenas, grados, mover_en_grados, movimiento, vueltas_arreglo, contador_generar_tiempo, centenas2, velocidad, contador_generar_tiempo2, centenas3;
 /*Variables MOTOR*/
 unsigned char correr_secuencia = 0;
 unsigned char secuencia[]={0x7F,0x3F,0xBF,0x9F,0xDF,0xCF,0xEF,0x6F};//Secuencia de pasos usando lógica negativa (código gray)
@@ -33,6 +34,7 @@ interrupt 15 UART_rx(void) //receive
 		//i=0;
 		SCID = '\n';
 		check_buffer();
+		
 	}
 	else{
 		temp[i++] = data;
@@ -51,6 +53,16 @@ interrupt 16 UART_tx(void){ //transmit
 interrupt 7 void RTI_TPM(void){
 	TPMSC_TOF = 0; //Timer Overflow Flag
 	correr_secuencia = 1; //Conexion entre el main y la interrupcion
+}
+
+limpiar(){
+	unsigned char cuenta2 = 0;
+	cuenta = 15;
+	while(cuenta > 0){
+		temp[cuenta2] = 'z';
+		cuenta2++;
+		cuenta--;
+	}
 }
 
 seleccionar_comando(void){
@@ -101,49 +113,77 @@ check_buffer(void)
 {
 	j=1;
 	for(j = 1; j<10; j++){
-		if(temp[0] == 'R'){// RPS
-			if(temp[j] == comando_RPS[j]){
-				coincidencia++;
-			}
-			else{
-				choose_command = 1;
-				print(command_unrecognized);
-				coincidencia = 0;
-				i=0;
-				break;
-			}
-			if(coincidencia == 2){
-				choose_command = 0;
-				print(command_ex);
-				coincidencia = 0;
-				break;
-			}
-		}
-		else if(temp[0] == 'D'){// DIR
-			if(temp[j] == comando_DIR[j]){
-				coincidencia++;
-			}
-			else{
-				choose_command = 1;
-				print(command_unrecognized);
-				coincidencia = 0;
-				i=0;
-				break;
-			}
-			if(coincidencia == 3){
-				if(temp[4] == 'W'){ //izquierda
-					cambiar_direccion = 0;
-					choose_command = 0;
-					print(command_ex);
-					coincidencia = 0;
-					break;
+		if(temp[0] == 'R'){// RPS:99.1
+			if(coincidencia < 2){
+				if(temp[j] == comando_RPS[j]){
+					coincidencia++;
 				}
-				else if(temp[4] == 'C'){ //derecha
-					cambiar_direccion = 1;
-					choose_command = 0;
-					print(command_ex);
-					coincidencia = 0;
-					break;
+			}
+			else{
+				if((temp[4] >= '0') && (temp[4] <= '9')){
+					centenas2 = temp[4] - 0x30;
+					centenas2*=100;
+					coincidencia++;
+					if((temp[5] >= '0') && (temp[5] <= '9')){
+						decenas2 = temp[5] - 0x30;
+						decenas2*=10;
+						coincidencia++;
+						if((temp[7] >= '0') && (temp[7] <= '9')){
+							unidades2 = temp[7] - 0x30;
+							coincidencia++;
+						}
+						else{
+							choose_command = 1;
+							print(command_unrecognized);
+							coincidencia = 0;
+							i=0;
+							break;
+						}
+					}
+					else{
+						choose_command = 1;
+						print(command_unrecognized);
+						coincidencia = 0;
+						i=0;
+						break;
+					}
+					velocidad = unidades2 + decenas2 + centenas2 ;
+					if(velocidad > 950){
+						velocidad += 100000;
+					}
+					if((velocidad > 900) && (velocidad < 950)){
+						velocidad += 10000;
+					}
+					if((velocidad > 800) && (velocidad < 900)){
+						velocidad += 1000;
+					}
+					if((velocidad > 600) && (velocidad < 800)){
+						velocidad += 500;
+					}
+					if((velocidad > 400) && (velocidad < 600)){
+						velocidad += 250;
+					}
+					if((velocidad > 200) && (velocidad < 400)){
+						velocidad += 125;
+					}
+					if((velocidad > 0) && (velocidad < 200)){
+						velocidad += 62;
+					}
+					//velocidad = unidades2 + decenas2 + centenas2 + 1000;
+					if(coincidencia == 5){
+						choose_command = 0;
+						print(command_ex);
+						coincidencia = 0;
+						timer = 1;
+						break;
+					}
+					else{
+						choose_command = 1;
+						print(command_unrecognized);
+						coincidencia = 0;
+						i=0;
+						break;
+					}
 				}
 				else{
 					choose_command = 1;
@@ -154,21 +194,56 @@ check_buffer(void)
 				}
 			}
 		}
-		else if(temp[0] == 'M'){// MOTOR
+		else if(temp[0] == 'D'){// DIR:C
+			if(temp[j] == comando_DIR[j]){
+				coincidencia++;
+				if(coincidencia == 4){
+					if(temp[5] == 'W'){ //derecha
+						cambiar_direccion = 0;
+						choose_command = 0;
+						print(command_ex);
+						coincidencia = 0;
+						break;
+					}
+					else if(temp[5] == 'C'){ //izquierda
+						cambiar_direccion = 1;
+						choose_command = 0;
+						print(command_ex);
+						coincidencia = 0;
+						break;
+					}
+					else{
+						choose_command = 1;
+						print(command_unrecognized);
+						coincidencia = 0;
+						i=0;
+						break;
+					}
+				}
+			}
+			else{
+				choose_command = 1;
+				print(command_unrecognized);
+				coincidencia = 0;
+				i=0;
+				break;
+			}
+			
+		}
+		else if(temp[0] == 'M'){// MOTOR:O
 			if(temp[j] == comando_MOTOR[j]){
 				coincidencia++;
-				if(coincidencia == 5){
-					if(temp[6] == 'F'){
+				if(coincidencia == 6){
+					if(temp[7] == 'F'){ //Apagado
 						choose_command = 0;
 						on_off = 0;
 						print(command_ex);
 						coincidencia = 0;
 						break;
 					}
-					else if(temp[6] == 'N'){
+					else if(temp[7] == 'N'){ //Encendido
 						choose_command = 0;
 						on_off = 1;
-						movimiento = 1; //************************QUITAR
 						print(command_ex);
 						coincidencia = 0;
 						break;
@@ -225,20 +300,21 @@ check_buffer(void)
 						break;
 					}
 					grados = unidades + decenas + centenas;
-					choose_command = 0;
+					//choose_command = 0;
 					//*********************************************************
 					//on_off = 0;
-					//if(on_off == 0){
-					//choose_command = 0;
-					movimiento = 1;
-					print(command_ex);
-					coincidencia = 0;
-					//}
-					//else{
-						//choose_command = 2;
-						//print(command_turnoff);
-					//}
-					break;
+					if(on_off == 0){
+						choose_command = 0;
+						movimiento = 1; //habilitar stepcw
+						print(command_ex);
+						coincidencia = 0;
+						break;
+					}
+					else{
+						choose_command = 2;
+						print(command_turnoff);
+						break;
+					}
 				}
 				else{
 					choose_command = 1;
@@ -246,6 +322,70 @@ check_buffer(void)
 					coincidencia = 0;
 					i=0;
 					break;
+				}
+			}
+		}
+		else if(temp[0] == 'T'){ //TEMPLIMIT:ttt.t
+			if(coincidencia < 8){
+				if(temp[j] == comando_TEMPLIMIT[j]){
+					coincidencia++;
+				}
+			}
+			else{
+				if((temp[10] >= '0') && (temp[10] <= '9')){
+					centenas3 = temp[10] - 0x30;
+					centenas3*=100;
+					coincidencia++;
+					if((temp[11] >= '0') && (temp[11] <= '9')){
+						decenas3 = temp[7] - 0x30;
+						decenas3*=10;
+						coincidencia++;
+						if((temp[12] >= '0') && (temp[12] <= '9')){
+							unidades3 = temp[12] - 0x30;
+							coincidencia++;
+							if((temp[14] >= '0') && (temp[14] <= '9')){
+								decimal = temp[14] - 0x30;
+								coincidencia++;
+							}
+							else{
+								choose_command = 1;
+								print(command_unrecognized);
+								coincidencia = 0;
+								i=0;
+								break;
+							}
+						}
+						else{
+							choose_command = 1;
+							print(command_unrecognized);
+							coincidencia = 0;
+							i=0;
+							break;
+						}
+					}
+					else{
+						choose_command = 1;
+						print(command_unrecognized);
+						coincidencia = 0;
+						i=0;
+						break;
+					}
+					grados = unidades + decenas + centenas;
+					//choose_command = 0;
+					//*********************************************************
+					//on_off = 0;
+					if(on_off == 0){
+						choose_command = 0;
+						movimiento = 1; //habilitar stepcw
+						print(command_ex);
+						coincidencia = 0;
+						break;
+					}
+					else{
+						choose_command = 2;
+						print(command_turnoff);
+						break;
+					}
 				}
 			}
 		}
@@ -308,6 +448,7 @@ void main(void) {
 	range = 0;
 	movimiento = 0;
 	vueltas_arreglo = 0;
+	timer = 0;
 
 	/*************          Codigo MOTOR         *************/
 
@@ -319,27 +460,105 @@ void main(void) {
 	
 	EnableInterrupts;
 	for(;;) {
+		//contador_generar_tiempo++;
 		if(correr_secuencia == 1){
-			if(movimiento == 1){
-				//correr_secuencia = 1;
-				//TPMMOD = 52000;
-				vueltas_arreglo = operacion_grados(grados);
-				if(mover_en_grados < vueltas_arreglo){
-					mover_en_grados++;
-					PTBD = secuencia[posicion++];
-					if(posicion == 8){ //si llega a la ultima posición regresa al inicio
-						posicion=0;
+			if(timer == 0){
+				if(on_off == 1){
+					if(cambiar_direccion == 0){ //Sentido horario
+						PTBD = secuencia[posicion++];
+						if(posicion == 8){ //si llega a la ultima posición regresa al inicio
+							posicion=0;
+						}
+					}
+					else{ //Sentido anti-horario
+						PTBD = secuencia[i--];
+						if(i == 255){
+							i=7;
+						}
+					}
+					correr_secuencia = 0;
+				}
+				if(on_off == 0){
+					if(movimiento == 1){
+						vueltas_arreglo = operacion_grados(grados);
+						if(mover_en_grados < vueltas_arreglo){
+							mover_en_grados++;
+							if(cambiar_direccion == 0){ //Sentido horario
+								PTBD = secuencia[posicion++];
+								if(posicion == 8){ //si llega a la ultima posición regresa al inicio
+									posicion=0;
+								}
+							}
+							else{ //Sentido anti-horario
+								PTBD = secuencia[i--];
+								if(i == 255){
+									i=7;
+								}
+							}
+						}
+						else{
+							mover_en_grados = 0;
+							movimiento=0;
+						}
+						correr_secuencia = 0;
 					}
 				}
-				else{
-					mover_en_grados = 0;
-					movimiento=0;
-					//correr_secuencia = 0;
+			}
+			else{
+				if(contador_generar_tiempo < 50000){
+					contador_generar_tiempo++;
+					if(contador_generar_tiempo2 < velocidad){
+						contador_generar_tiempo=0;
+						contador_generar_tiempo2++;
+					}
+					else{
+						if(on_off == 1){
+							if(cambiar_direccion == 0){ //Sentido horario
+								PTBD = secuencia[posicion++];
+								if(posicion == 8){ //si llega a la ultima posición regresa al inicio
+									posicion=0;
+								}
+							}
+							else{ //Sentido anti-horario
+								PTBD = secuencia[i--];
+								if(i == 255){
+									i=7;
+								}
+							}
+							correr_secuencia = 0;
+						}
+						if(on_off == 0){
+							if(movimiento == 1){
+								vueltas_arreglo = operacion_grados(grados);
+								if(mover_en_grados < vueltas_arreglo){
+									mover_en_grados++;
+									if(cambiar_direccion == 0){ //Sentido horario
+										PTBD = secuencia[posicion++];
+										if(posicion == 8){ //si llega a la ultima posición regresa al inicio
+											posicion=0;
+										}
+									}
+									else{ //Sentido anti-horario
+										PTBD = secuencia[i--];
+										if(i == 255){
+											i=7;
+										}
+									}
+								}
+								else{
+									mover_en_grados = 0;
+									movimiento=0;
+								}
+								correr_secuencia = 0;
+							}
+						}
+						contador_generar_tiempo = 0;
+						contador_generar_tiempo2 = 0;
+					}
 				}
-				correr_secuencia = 0;
 			}
 		}
-		TPMMOD = 52000;
+		TPMMOD = 4000;
 		__RESET_WATCHDOG();
 	} 
 }
