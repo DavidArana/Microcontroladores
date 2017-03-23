@@ -24,6 +24,8 @@ unsigned int centenas, grados, mover_en_grados, vueltas_arreglo, contador_genera
 unsigned char imprimir_comando_done = 0;
 unsigned int millares, temperatura_limite, temperatura_ADC;
 unsigned int tiempo_timer = 0;
+unsigned int tiempo_LED = 0;
+unsigned char encender_LED = 0;
 unsigned char checar_temperatura = 0;
 unsigned char imprimir_temperatura = 0;
 
@@ -95,10 +97,12 @@ interrupt 7 void RTI_TPM(void){
 	(void)TPMSC;
 	TPMSC_TOF = 0; //Timer Overflow Flag
 	tiempo_timer++;
+	tiempo_LED++;
 	if(tiempo_timer == 5000){
 		checar_temperatura = 1;
 		tiempo_timer = 0;
 	}
+	encender_LED = 1;
 	correr_secuencia = 1; //Conexion entre el main y la interrupcion
 }
 
@@ -464,6 +468,18 @@ int operacionTemp(){ // Metodo para formatear el valor del ADC segun los pasos p
 	return op;
 }
 
+void led(void){
+	if(tiempo_LED < 1000){
+		PTAD_PTAD1=1;
+	}
+	else if( tiempo_LED >= 1000 && tiempo_LED <2000){
+		PTAD_PTAD1=0;
+	}
+	else{
+		tiempo_LED=0;
+	}
+}
+
 void main(void) {
 	/*          Configuracion TIMER          */    
 	// (PS * TPMMOD) / FrecuencyCLK
@@ -477,6 +493,8 @@ void main(void) {
 
 	/*************          Codigo MOTOR         *************/
 	PTBDD=0xF0; //Inicializa puertos
+	//PTAPE_PTAPE3 = 1;
+	PTADD=0x02;
 	
 	/*************          Codigo SERIAL        *************/
 	SCIBD = 26; //busclk 4Mhz, baud rate de 9600 bps  **Baud Rate Register
@@ -509,6 +527,10 @@ void main(void) {
 
 	EnableInterrupts;
 	for(;;) {
+		if(encender_LED == 1){
+			encender_LED = 0;
+			led();
+		}
 		if(checar_temperatura == 1){
 			checar_temperatura = 0;
 			imprimir_temperatura = 1;
