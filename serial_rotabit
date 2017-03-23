@@ -5,18 +5,28 @@ unsigned char comando_RPS[] = {"RPS"};
 unsigned char comando_DIR[] = {"DIR:C"};
 unsigned char comando_MOTOR[] = {"MOTOR:O"};
 unsigned char comando_STEPCW[] = {"STEPCW"};
-unsigned char comando_TEMPLIMIT[] = {"TEMPLIMIT"};
-unsigned char command_ex[] = {"Comando ejecutado"};
+unsigned char comando_TEMPLIMIT[] = {"TEMPLIMIT:"};
+unsigned char command_ex[] = {"DONE\n\r"};
 unsigned char command_unrecognized[] = {"Comando no reconocido"};
+unsigned char command_tempeture[] = {"Temperatura es    .  \n\r"}; //15 16 17 19
+//unsigned char command_tempeture[] = {"Temperatura es \n\r"};
+unsigned char mensaje_temp_limit[] = {"Overtemperature detected\n\r"};
 unsigned char command_turnoff[] = {"Apagar motor"};
-unsigned char i, c, caracter, on_off, size, choose_command;
+unsigned char i, c, caracter, on_off, size, choose_command, imprimir_comando, imprimir_comando_tempover;
+unsigned char count_comando = 0;
+unsigned char count_comando2 = 0;
 unsigned char data;
 unsigned char temp[16];
-unsigned char arreglo_vacio[6];
 unsigned char cuenta = 15;
-unsigned char counter, counter2, j, coincidencia, count_comando, numero_grados, duty_cycle_value, new_duty_cycle;
-unsigned char enable_transmission, unidades, decenas, decenas2, unidades2, timer, decenas3, unidades3, decimal;
-unsigned int centenas, grados, mover_en_grados, movimiento, vueltas_arreglo, contador_generar_tiempo, centenas2, velocidad, contador_generar_tiempo2, centenas3;
+unsigned char counter, counter2, j, coincidencia;
+unsigned char enable_transmission, unidades, decenas, decenas2, unidades2, timer, decenas3, unidades3, decimal, movimiento, checar_arreglo;
+unsigned int centenas, grados, mover_en_grados, vueltas_arreglo, contador_generar_tiempo, centenas2, velocidad, contador_generar_tiempo2, centenas3;
+unsigned char imprimir_comando_done = 0;
+unsigned int millares, temperatura_limite, temperatura_ADC;
+unsigned int tiempo_timer = 0;
+unsigned char checar_temperatura = 0;
+unsigned char imprimir_temperatura = 0;
+
 /*Variables MOTOR*/
 unsigned char correr_secuencia = 0;
 unsigned char secuencia[]={0x7F,0x3F,0xBF,0x9F,0xDF,0xCF,0xEF,0x6F};//Secuencia de pasos usando lógica negativa (código gray)
@@ -26,36 +36,73 @@ unsigned int range;
 unsigned char cambiar_direccion = 0;
 unsigned int contador_timer;
 
+
 interrupt 15 UART_rx(void) //receive
 {
 	(void) SCIS1;
 	data = SCID;
 	if(data == 13){
-		//i=0;
 		SCID = '\n';
-		check_buffer();
-		
+		checar_arreglo = 1;
+		//i=0;
 	}
 	else{
 		temp[i++] = data;
 	}
-	//*if(i == 5){
-		//i = 0;
-	//}
 }
+
+//void seleccionar_comando(void);
+//void check_buffer(void);
 
 interrupt 16 UART_tx(void){ //transmit
 	(void) SCIS1;
-	seleccionar_comando();
-	//SCIC2_TIE = 0; //apaga interrupcion de transmision
+	if(imprimir_comando_done == 1){
+		if(count_comando < 8){
+			SCID = command_ex[count_comando++];
+			//count_comando++;
+		}
+		else{
+			count_comando=0;
+			imprimir_comando_done = 0;
+			SCIC2_TIE = 0;
+		}
+	}
+	if((imprimir_temperatura == 1) && (imprimir_comando_done == 0)){
+		if(count_comando < 24){
+			SCID = command_tempeture[count_comando++];
+			//count_comando++;
+		}
+		else{
+			//SCID = temperatura_limite;
+			count_comando=0;
+			imprimir_temperatura = 0;
+			SCIC2_TIE = 0;
+		}
+	}//28
+	/*if(imprimir_comando_tempover == 1){
+		if(count_comando2 < 28){
+			SCID = mensaje_temp_limit[count_comando2++];
+		}
+		else{
+			count_comando2=0;
+			imprimir_comando_tempover = 0;
+			SCIC2_TIE = 0;
+		}
+	}*/
 }
 
 interrupt 7 void RTI_TPM(void){
+	(void)TPMSC;
 	TPMSC_TOF = 0; //Timer Overflow Flag
+	tiempo_timer++;
+	if(tiempo_timer == 5000){
+		checar_temperatura = 1;
+		tiempo_timer = 0;
+	}
 	correr_secuencia = 1; //Conexion entre el main y la interrupcion
 }
 
-limpiar(){
+/*limpiar(){
 	unsigned char cuenta2 = 0;
 	cuenta = 15;
 	while(cuenta > 0){
@@ -63,14 +110,15 @@ limpiar(){
 		cuenta2++;
 		cuenta--;
 	}
-}
+}*/
 
-seleccionar_comando(void){
+void seleccionar_comando(void){
 	if(choose_command == 0){
 		if(command_ex[count_comando] == 0){
-			SCIC2_TIE = 0;
+			SCIC2_TIE = 0; // apaga interrupcion de transmision
 			count_comando=0;
 			SCID = '\n';
+			imprimir_comando = 0;
 		}
 		else{
 			SCID = command_ex[count_comando++];
@@ -78,7 +126,7 @@ seleccionar_comando(void){
 	}
 	if(choose_command == 2){
 		if(command_turnoff[count_comando] == 0){
-			SCIC2_TIE = 0;
+			SCIC2_TIE = 0; // apaga interrupcion de transmision
 			count_comando=0;
 			SCID = '\n';
 		}
@@ -88,7 +136,7 @@ seleccionar_comando(void){
 	}
 	if(choose_command == 1){
 		if(command_unrecognized[count_comando] == 0){
-			SCIC2_TIE = 0;
+			SCIC2_TIE = 0; // apaga interrupcion de transmision
 			count_comando=0;
 			SCID = '\n';
 		}
@@ -98,7 +146,7 @@ seleccionar_comando(void){
 	}
 }
 
-print(unsigned char arreglo[]){
+/*print(unsigned char arreglo[]){
 	i=0;
 	while(arreglo[c] != 0){
 		SCIC2_TIE = 1;
@@ -106,10 +154,9 @@ print(unsigned char arreglo[]){
 	}
 	c=0;
 	return 0;
-	//i=0;
-}
+}*/
 
-check_buffer(void)
+void check_buffer(void)
 {
 	j=1;
 	for(j = 1; j<10; j++){
@@ -134,7 +181,7 @@ check_buffer(void)
 						}
 						else{
 							choose_command = 1;
-							print(command_unrecognized);
+							imprimir_comando = 1;
 							coincidencia = 0;
 							i=0;
 							break;
@@ -142,7 +189,7 @@ check_buffer(void)
 					}
 					else{
 						choose_command = 1;
-						print(command_unrecognized);
+						imprimir_comando = 1;
 						coincidencia = 0;
 						i=0;
 						break;
@@ -172,14 +219,14 @@ check_buffer(void)
 					//velocidad = unidades2 + decenas2 + centenas2 + 1000;
 					if(coincidencia == 5){
 						choose_command = 0;
-						print(command_ex);
+						imprimir_comando = 1;
 						coincidencia = 0;
 						timer = 1;
 						break;
 					}
 					else{
 						choose_command = 1;
-						print(command_unrecognized);
+						imprimir_comando = 1;
 						coincidencia = 0;
 						i=0;
 						break;
@@ -187,7 +234,7 @@ check_buffer(void)
 				}
 				else{
 					choose_command = 1;
-					print(command_unrecognized);
+					imprimir_comando = 1;
 					coincidencia = 0;
 					i=0;
 					break;
@@ -197,24 +244,24 @@ check_buffer(void)
 		else if(temp[0] == 'D'){// DIR:C
 			if(temp[j] == comando_DIR[j]){
 				coincidencia++;
-				if(coincidencia == 4){
-					if(temp[5] == 'W'){ //derecha
+				if(coincidencia == 2){
+					if(temp[5] == 'W'){ //derecha CW
 						cambiar_direccion = 0;
-						choose_command = 0;
-						print(command_ex);
+						imprimir_comando_done = 1;
+						SCIC2_TIE = 1;
 						coincidencia = 0;
+						i=0;
 						break;
 					}
-					else if(temp[5] == 'C'){ //izquierda
+					else if(temp[5] == 'C'){ //izquierda CCW
 						cambiar_direccion = 1;
-						choose_command = 0;
-						print(command_ex);
+						imprimir_comando_done = 1;
+						SCIC2_TIE = 1;
 						coincidencia = 0;
+						i=0;
 						break;
 					}
 					else{
-						choose_command = 1;
-						print(command_unrecognized);
 						coincidencia = 0;
 						i=0;
 						break;
@@ -222,8 +269,6 @@ check_buffer(void)
 				}
 			}
 			else{
-				choose_command = 1;
-				print(command_unrecognized);
 				coincidencia = 0;
 				i=0;
 				break;
@@ -233,24 +278,26 @@ check_buffer(void)
 		else if(temp[0] == 'M'){// MOTOR:O
 			if(temp[j] == comando_MOTOR[j]){
 				coincidencia++;
-				if(coincidencia == 6){
+				if(coincidencia == 4){
 					if(temp[7] == 'F'){ //Apagado
-						choose_command = 0;
+						imprimir_comando_done = 1;
+						SCIC2_TIE = 1;
 						on_off = 0;
-						print(command_ex);
 						coincidencia = 0;
+						i=0;
 						break;
 					}
 					else if(temp[7] == 'N'){ //Encendido
-						choose_command = 0;
+						imprimir_comando_done = 1;
+						SCIC2_TIE = 1;
 						on_off = 1;
-						print(command_ex);
 						coincidencia = 0;
+						i=0;
 						break;
 					}
 					else{
 						choose_command = 1;
-						print(command_unrecognized);
+						imprimir_comando = 1;
 						coincidencia = 0;
 						i=0;
 						break;
@@ -259,34 +306,34 @@ check_buffer(void)
 			}
 			else{
 				choose_command = 1;
-				print(command_unrecognized);
+				imprimir_comando = 1;
 				coincidencia = 0;
 				i=0;
 				break;
 			}
 		}
-		else if(temp[0] == 'S'){// STEPCW
+		else if(temp[0] == 'S'){// STEPCW:
 			if(coincidencia < 5){
 				if(temp[j] == comando_STEPCW[j]){
 					coincidencia++;
 				}
 			}
 			else{
-				if((temp[6] >= '0') && (temp[6] <= '9')){
-					centenas = temp[6] - 0x30;
+				if((temp[7] >= '0') && (temp[7] <= '9')){
+					centenas = temp[7] - 0x30;
 					centenas*=100;
 					coincidencia++;
-					if((temp[7] >= '0') && (temp[7] <= '9')){
-						decenas = temp[7] - 0x30;
+					if((temp[8] >= '0') && (temp[8] <= '9')){
+						decenas = temp[8] - 0x30;
 						decenas*=10;
 						coincidencia++;
-						if((temp[8] >= '0') && (temp[8] <= '9')){
-							unidades = temp[8] - 0x30;
+						if((temp[9] >= '0') && (temp[9] <= '9')){
+							unidades = temp[9] - 0x30;
 							coincidencia++;
 						}
 						else{
 							choose_command = 1;
-							print(command_unrecognized);
+							imprimir_comando = 1;
 							coincidencia = 0;
 							i=0;
 							break;
@@ -294,7 +341,7 @@ check_buffer(void)
 					}
 					else{
 						choose_command = 1;
-						print(command_unrecognized);
+						imprimir_comando = 1;
 						coincidencia = 0;
 						i=0;
 						break;
@@ -304,21 +351,23 @@ check_buffer(void)
 					//*********************************************************
 					//on_off = 0;
 					if(on_off == 0){
-						choose_command = 0;
+						imprimir_comando_done = 1;
+						SCIC2_TIE = 1;
 						movimiento = 1; //habilitar stepcw
-						print(command_ex);
 						coincidencia = 0;
+						i=0;
 						break;
 					}
 					else{
 						choose_command = 2;
-						print(command_turnoff);
+						imprimir_comando = 1;
+						i=0;
 						break;
 					}
 				}
 				else{
 					choose_command = 1;
-					print(command_unrecognized);
+					imprimir_comando = 1;
 					coincidencia = 0;
 					i=0;
 					break;
@@ -333,23 +382,22 @@ check_buffer(void)
 			}
 			else{
 				if((temp[10] >= '0') && (temp[10] <= '9')){
-					centenas3 = temp[10] - 0x30;
-					centenas3*=100;
+					millares = temp[10] - 0x30;
+					millares*=1000;
 					coincidencia++;
 					if((temp[11] >= '0') && (temp[11] <= '9')){
-						decenas3 = temp[7] - 0x30;
-						decenas3*=10;
+						centenas3 = temp[11] - 0x30;
+						centenas3*=100;
 						coincidencia++;
 						if((temp[12] >= '0') && (temp[12] <= '9')){
-							unidades3 = temp[12] - 0x30;
+							decenas3 = temp[12] - 0x30;
+							decenas3*=10;
 							coincidencia++;
 							if((temp[14] >= '0') && (temp[14] <= '9')){
-								decimal = temp[14] - 0x30;
+								unidades3 = temp[14] - 0x30;
 								coincidencia++;
 							}
 							else{
-								choose_command = 1;
-								print(command_unrecognized);
 								coincidencia = 0;
 								i=0;
 								break;
@@ -357,7 +405,7 @@ check_buffer(void)
 						}
 						else{
 							choose_command = 1;
-							print(command_unrecognized);
+							imprimir_comando = 1;
 							coincidencia = 0;
 							i=0;
 							break;
@@ -365,34 +413,26 @@ check_buffer(void)
 					}
 					else{
 						choose_command = 1;
-						print(command_unrecognized);
+						imprimir_comando = 1;
 						coincidencia = 0;
 						i=0;
 						break;
 					}
-					grados = unidades + decenas + centenas;
-					//choose_command = 0;
-					//*********************************************************
-					//on_off = 0;
-					if(on_off == 0){
-						choose_command = 0;
-						movimiento = 1; //habilitar stepcw
-						print(command_ex);
-						coincidencia = 0;
-						break;
-					}
-					else{
-						choose_command = 2;
-						print(command_turnoff);
-						break;
-					}
+					command_tempeture[15] = temp[10];
+					command_tempeture[16] = temp[11];
+					command_tempeture[17] = temp[12];
+					command_tempeture[19] = temp[14];
+					temperatura_limite = unidades3 + decenas3 + centenas3 + millares;
+					coincidencia = 0;
+					i=0;
+					imprimir_comando_done = 1;
 				}
 			}
 		}
 		else{
 			i=0;
 			choose_command = 1;
-			print(command_unrecognized);
+			imprimir_comando = 1;
 			coincidencia = 0;
 			break;
 		}
@@ -410,26 +450,37 @@ char operacion(){ // Metodo para formatear el valor del ADC segun los pasos para
 	return op;
 }
 
+/*************          Codigo SERIAL         *************/
 unsigned int operacion_grados(unsigned int grados_parametro){
 	unsigned int div;
 	div=(((long)grados_parametro)*96)/(360);
 	return div;
 }
 
-void main(void) {
-	/*************          Codigo MOTOR         *************/
-	//unsigned int value;
-	//(PS * TPMMOD) / FrecuencyCLK
-	// Bus clock = 4 Mhz, Preescaler = 4
-	TPMSC = 0b01001010;
-	//ADCCFG = 0b00010000; //Configuration Register ----> Long Sample Time Configuration (Conversion completa de 10 bits) ..0x10
-	//ADCSC1 = 0b00100000; //Registro de ADC ----> AD0 canal cero
+int operacionTemp(){ // Metodo para formatear el valor del ADC segun los pasos para que el motor de una revolucion completa
+	unsigned int op, pot;
+	pot = ADCRL; //Registro de ADC
+	op=(int)pot*39;// ecuacion para el ADC, con base en valores de 1000, valor de nuestra pendiente -.192.
+	return op;
+}
 
+void main(void) {
+	/*          Configuracion TIMER          */    
+	// (PS * TPMMOD) / FrecuencyCLK
+	// Bus clock = 4 Mhz, Preescaler = 4   
+	TPMSC = 0b01001010; // 1 µs
+	TPMMOD = 1000; // 1 ms
+	
+	/*          Configuracion ADC                */
+	ADCCFG = 0b00010000; //Configuration Register ----> Long Sample Time Configuration (Conversion completa de 10 bits) ..0x10
+	ADCSC1 = 0b00100000; //Registro de ADC ----> AD0 canal cero
+
+	/*************          Codigo MOTOR         *************/
 	PTBDD=0xF0; //Inicializa puertos
 	
 	/*************          Codigo SERIAL        *************/
 	SCIBD = 26; //busclk 4Mhz, baud rate de 9600 bps  **Baud Rate Register
-	SCIC2 = 0b00101100; // TIE = 0, TE = 1, RE = 1  ***0b10101100   0x8C
+	SCIC2 = 0b00101100; // TIE = 1, TE = 1, RE = 1  ***0b10101100   0x8C
 
 	i=0;
 	c=0;
@@ -439,28 +490,40 @@ void main(void) {
 	coincidencia = 0;
 	j = 0;
 	choose_command = 0;
-	count_comando = 0;
+	//count_comando = 0;
 	enable_transmission = 0;
 	on_off = 1;
-	numero_grados = 0;
 	mover_en_grados = 0;
 	value = 0;
 	range = 0;
 	movimiento = 0;
 	vueltas_arreglo = 0;
 	timer = 0;
+	checar_arreglo = 0;
+	temperatura_limite = 5000;
+	imprimir_comando_tempover = 0;
+	command_tempeture[15] = '5';
+	command_tempeture[16] = '0';
+	command_tempeture[17] = '0';
+	command_tempeture[19] = '0';
 
-	/*************          Codigo MOTOR         *************/
-
-	/*          Configuracion TIMER              */
-	
-	
-
-	/*          Configuracion ADC                */
-	
 	EnableInterrupts;
 	for(;;) {
-		//contador_generar_tiempo++;
+		if(checar_temperatura == 1){
+			checar_temperatura = 0;
+			imprimir_temperatura = 1;
+			SCIC2_TIE = 1;
+			temperatura_ADC = operacionTemp();
+			if(temperatura_limite <= temperatura_ADC){
+				on_off = 0;
+				imprimir_comando_tempover = 1;
+				SCIC2_TIE = 1;
+			}
+		}
+		if(checar_arreglo == 1){
+			checar_arreglo = 0;
+			check_buffer();
+		}
 		if(correr_secuencia == 1){
 			if(timer == 0){
 				if(on_off == 1){
@@ -470,7 +533,7 @@ void main(void) {
 							posicion=0;
 						}
 					}
-					else{ //Sentido anti-horario
+					if(cambiar_direccion == 1){ //Sentido anti-horario
 						PTBD = secuencia[i--];
 						if(i == 255){
 							i=7;
@@ -489,7 +552,7 @@ void main(void) {
 									posicion=0;
 								}
 							}
-							else{ //Sentido anti-horario
+							if(cambiar_direccion == 1){ //Sentido anti-horario
 								PTBD = secuencia[i--];
 								if(i == 255){
 									i=7;
@@ -519,7 +582,7 @@ void main(void) {
 									posicion=0;
 								}
 							}
-							else{ //Sentido anti-horario
+							if(cambiar_direccion == 1){ //Sentido anti-horario
 								PTBD = secuencia[i--];
 								if(i == 255){
 									i=7;
@@ -538,7 +601,7 @@ void main(void) {
 											posicion=0;
 										}
 									}
-									else{ //Sentido anti-horario
+									if(cambiar_direccion == 1){ //Sentido anti-horario
 										PTBD = secuencia[i--];
 										if(i == 255){
 											i=7;
@@ -558,7 +621,6 @@ void main(void) {
 				}
 			}
 		}
-		TPMMOD = 4000;
 		__RESET_WATCHDOG();
 	} 
 }
