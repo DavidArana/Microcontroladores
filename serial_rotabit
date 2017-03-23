@@ -2,7 +2,7 @@
 #include "derivative.h" /* include peripheral declarations */
 
 unsigned char comando_RPS[] = {"RPS"};
-unsigned char comando_DIR[] = {"DIR:C"};
+unsigned char comando_DIR[] = {"DIRC"};
 unsigned char comando_MOTOR[] = {"MOTOR:O"};
 unsigned char comando_STEPCW[] = {"STEPCW"};
 unsigned char comando_TEMPLIMIT[] = {"TEMPLIMIT:"};
@@ -223,7 +223,7 @@ void check_buffer(void)
 					//velocidad = unidades2 + decenas2 + centenas2 + 1000;
 					if(coincidencia == 5){
 						choose_command = 0;
-						imprimir_comando = 1;
+						imprimir_comando_done = 1;
 						coincidencia = 0;
 						timer = 1;
 						break;
@@ -245,11 +245,11 @@ void check_buffer(void)
 				}
 			}
 		}
-		else if(temp[0] == 'D'){// DIR:C
+		else if(temp[0] == 'D'){// DIRC
 			if(temp[j] == comando_DIR[j]){
 				coincidencia++;
-				if(coincidencia == 2){
-					if(temp[5] == 'W'){ //derecha CW
+				if(coincidencia == 3){
+					if(temp[4] == 'W'){ //derecha CW
 						cambiar_direccion = 0;
 						imprimir_comando_done = 1;
 						SCIC2_TIE = 1;
@@ -257,7 +257,7 @@ void check_buffer(void)
 						i=0;
 						break;
 					}
-					else if(temp[5] == 'C'){ //izquierda CCW
+					else if(temp[4] == 'C'){ //izquierda CCW
 						cambiar_direccion = 1;
 						imprimir_comando_done = 1;
 						SCIC2_TIE = 1;
@@ -422,10 +422,10 @@ void check_buffer(void)
 						i=0;
 						break;
 					}
-					command_tempeture[15] = temp[10];
-					command_tempeture[16] = temp[11];
-					command_tempeture[17] = temp[12];
-					command_tempeture[19] = temp[14];
+					//command_tempeture[15] = temp[10];
+					//command_tempeture[16] = temp[11];
+					//command_tempeture[17] = temp[12];
+					//command_tempeture[19] = temp[14];
 					temperatura_limite = unidades3 + decenas3 + centenas3 + millares;
 					coincidencia = 0;
 					i=0;
@@ -480,6 +480,18 @@ void led(void){
 	}
 }
 
+void num_to_character(void){
+	unsigned int temperatura;
+	temperatura = operacionTemp();
+	command_tempeture[15] = ((char) temperatura % 10) + 0x30;
+	temperatura = temperatura/10;
+	command_tempeture[16] = ((char) temperatura % 10) + 0x30;
+	temperatura = temperatura/10;
+	command_tempeture[17] = ((char) temperatura % 10) + 0x30;
+	temperatura = temperatura/10;
+	command_tempeture[19] = ((char) temperatura % 10) + 0x30;
+}
+
 void main(void) {
 	/*          Configuracion TIMER          */    
 	// (PS * TPMMOD) / FrecuencyCLK
@@ -493,7 +505,6 @@ void main(void) {
 
 	/*************          Codigo MOTOR         *************/
 	PTBDD=0xF0; //Inicializa puertos
-	//PTAPE_PTAPE3 = 1;
 	PTADD=0x02;
 	
 	/*************          Codigo SERIAL        *************/
@@ -532,10 +543,11 @@ void main(void) {
 			led();
 		}
 		if(checar_temperatura == 1){
+			temperatura_ADC = operacionTemp();
 			checar_temperatura = 0;
+			num_to_character();
 			imprimir_temperatura = 1;
 			SCIC2_TIE = 1;
-			temperatura_ADC = operacionTemp();
 			if(temperatura_limite <= temperatura_ADC){
 				on_off = 0;
 				imprimir_comando_tempover = 1;
