@@ -2,7 +2,7 @@
 #include "derivative.h" /* include peripheral declarations */
 
 unsigned char comando_RPS[] = {"RPS"};
-unsigned char comando_DIR[] = {"DIRC"};
+unsigned char comando_DIR[] = {"DIR:C"};
 unsigned char comando_MOTOR[] = {"MOTOR:O"};
 unsigned char comando_STEPCW[] = {"STEPCW"};
 unsigned char comando_TEMPLIMIT[] = {"TEMPLIMIT:"};
@@ -31,7 +31,7 @@ unsigned char imprimir_temperatura = 0;
 
 /*Variables MOTOR*/
 unsigned char correr_secuencia = 0;
-unsigned char secuencia[]={0x7F,0x3F,0xBF,0x9F,0xDF,0xCF,0xEF,0x6F};//Secuencia de pasos usando lógica negativa (código gray)
+unsigned char secuencia[]={0xF7,0xF3,0xFB,0xF9,0xFD,0xFC,0xFE,0xF6};//Secuencia de pasos usando lógica negativa (código gray)
 unsigned char posicion = 0;
 unsigned int value;
 unsigned int range;
@@ -39,7 +39,7 @@ unsigned char cambiar_direccion = 0;
 unsigned int contador_timer;
 
 
-interrupt 15 UART_rx(void) //receive
+interrupt 15 void UART_rx(void) //receive
 {
 	(void) SCIS1;
 	data = SCID;
@@ -56,10 +56,10 @@ interrupt 15 UART_rx(void) //receive
 //void seleccionar_comando(void);
 //void check_buffer(void);
 
-interrupt 16 UART_tx(void){ //transmit
+interrupt 16 void UART_tx(void){ //transmit
 	(void) SCIS1;
 	if(imprimir_comando_done == 1){
-		if(count_comando < 8){
+		if(command_ex[count_comando] != 0){
 			SCID = command_ex[count_comando++];
 			//count_comando++;
 		}
@@ -69,7 +69,7 @@ interrupt 16 UART_tx(void){ //transmit
 			SCIC2_TIE = 0;
 		}
 	}
-	if((imprimir_temperatura == 1) && (imprimir_comando_done == 0)){
+	/*if((imprimir_temperatura == 1) && (imprimir_comando_done == 0)){
 		if(count_comando < 24){
 			SCID = command_tempeture[count_comando++];
 			//count_comando++;
@@ -80,7 +80,7 @@ interrupt 16 UART_tx(void){ //transmit
 			imprimir_temperatura = 0;
 			SCIC2_TIE = 0;
 		}
-	}//28
+	}//28*/
 	/*if(imprimir_comando_tempover == 1){
 		if(count_comando2 < 28){
 			SCID = mensaje_temp_limit[count_comando2++];
@@ -105,16 +105,6 @@ interrupt 7 void RTI_TPM(void){
 	encender_LED = 1;
 	correr_secuencia = 1; //Conexion entre el main y la interrupcion
 }
-
-/*limpiar(){
-	unsigned char cuenta2 = 0;
-	cuenta = 15;
-	while(cuenta > 0){
-		temp[cuenta2] = 'z';
-		cuenta2++;
-		cuenta--;
-	}
-}*/
 
 void seleccionar_comando(void){
 	if(choose_command == 0){
@@ -224,8 +214,10 @@ void check_buffer(void)
 					if(coincidencia == 5){
 						choose_command = 0;
 						imprimir_comando_done = 1;
+						SCIC2_TIE = 1;
 						coincidencia = 0;
 						timer = 1;
+						i=0;
 						break;
 					}
 					else{
@@ -245,11 +237,11 @@ void check_buffer(void)
 				}
 			}
 		}
-		else if(temp[0] == 'D'){// DIRC
+		else if(temp[0] == 'D'){// DIR:C
 			if(temp[j] == comando_DIR[j]){
 				coincidencia++;
-				if(coincidencia == 3){
-					if(temp[4] == 'W'){ //derecha CW
+				if(coincidencia == 4){
+					if(temp[5] == 'W'){ //derecha CW
 						cambiar_direccion = 0;
 						imprimir_comando_done = 1;
 						SCIC2_TIE = 1;
@@ -257,7 +249,7 @@ void check_buffer(void)
 						i=0;
 						break;
 					}
-					else if(temp[4] == 'C'){ //izquierda CCW
+					else if(temp[5] == 'C'){ //izquierda CCW
 						cambiar_direccion = 1;
 						imprimir_comando_done = 1;
 						SCIC2_TIE = 1;
@@ -504,8 +496,9 @@ void main(void) {
 	ADCSC1 = 0b00100000; //Registro de ADC ----> AD0 canal cero
 
 	/*************          Codigo MOTOR         *************/
-	PTBDD=0xF0; //Inicializa puertos
-	PTADD=0x02;
+	//PTBDD=0xF0; //Inicializa puertos
+	PTADD=0xFF;
+	PTAD = 0x00;
 	
 	/*************          Codigo SERIAL        *************/
 	SCIBD = 26; //busclk 4Mhz, baud rate de 9600 bps  **Baud Rate Register
@@ -538,11 +531,11 @@ void main(void) {
 
 	EnableInterrupts;
 	for(;;) {
-		if(encender_LED == 1){
+		/*if(encender_LED == 1){
 			encender_LED = 0;
 			led();
-		}
-		if(checar_temperatura == 1){
+		}*/
+		/*if(checar_temperatura == 1){
 			temperatura_ADC = operacionTemp();
 			checar_temperatura = 0;
 			num_to_character();
@@ -553,7 +546,7 @@ void main(void) {
 				imprimir_comando_tempover = 1;
 				SCIC2_TIE = 1;
 			}
-		}
+		}*/
 		if(checar_arreglo == 1){
 			checar_arreglo = 0;
 			check_buffer();
@@ -562,13 +555,13 @@ void main(void) {
 			if(timer == 0){
 				if(on_off == 1){
 					if(cambiar_direccion == 0){ //Sentido horario
-						PTBD = secuencia[posicion++];
+						PTAD = secuencia[posicion++];
 						if(posicion == 8){ //si llega a la ultima posición regresa al inicio
 							posicion=0;
 						}
 					}
 					if(cambiar_direccion == 1){ //Sentido anti-horario
-						PTBD = secuencia[i--];
+						PTAD = secuencia[i--];
 						if(i == 255){
 							i=7;
 						}
@@ -581,13 +574,13 @@ void main(void) {
 						if(mover_en_grados < vueltas_arreglo){
 							mover_en_grados++;
 							if(cambiar_direccion == 0){ //Sentido horario
-								PTBD = secuencia[posicion++];
+								PTAD = secuencia[posicion++];
 								if(posicion == 8){ //si llega a la ultima posición regresa al inicio
 									posicion=0;
 								}
 							}
 							if(cambiar_direccion == 1){ //Sentido anti-horario
-								PTBD = secuencia[i--];
+								PTAD = secuencia[i--];
 								if(i == 255){
 									i=7;
 								}
@@ -611,13 +604,13 @@ void main(void) {
 					else{
 						if(on_off == 1){
 							if(cambiar_direccion == 0){ //Sentido horario
-								PTBD = secuencia[posicion++];
+								PTAD = secuencia[posicion++];
 								if(posicion == 8){ //si llega a la ultima posición regresa al inicio
 									posicion=0;
 								}
 							}
 							if(cambiar_direccion == 1){ //Sentido anti-horario
-								PTBD = secuencia[i--];
+								PTAD = secuencia[i--];
 								if(i == 255){
 									i=7;
 								}
@@ -630,13 +623,13 @@ void main(void) {
 								if(mover_en_grados < vueltas_arreglo){
 									mover_en_grados++;
 									if(cambiar_direccion == 0){ //Sentido horario
-										PTBD = secuencia[posicion++];
+										PTAD = secuencia[posicion++];
 										if(posicion == 8){ //si llega a la ultima posición regresa al inicio
 											posicion=0;
 										}
 									}
 									if(cambiar_direccion == 1){ //Sentido anti-horario
-										PTBD = secuencia[i--];
+										PTAD = secuencia[i--];
 										if(i == 255){
 											i=7;
 										}
